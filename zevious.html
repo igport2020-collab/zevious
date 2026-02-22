@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>ZEVIOUS - オリジナル縦スクロールシューティング</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html { height:100%; }
+body {
+  background:#000; color:#fff;
+  font-family:'Courier New',monospace;
+  display:flex; flex-direction:column;
+  align-items:center;
+  height:100dvh;
+  overflow:hidden; user-select:none;
+  -webkit-user-select:none; touch-action:none;
+}
+#ui {
+  display:flex; justify-content:space-between; align-items:center;
+  width:100%; max-width:400px; padding:3px 8px;
+  background:#111; border-bottom:1px solid #333;
+  font-size:11px; letter-spacing:1px;
+  flex-shrink:0; height:30px;
+}
+#ui .val { color:#4af; }
+#btnRow { display:flex; gap:4px; align-items:center; }
+button {
+  font-family:'Courier New',monospace; font-size:10px;
+  background:#222; border:1px solid #444; color:#888;
+  padding:2px 6px; cursor:pointer; letter-spacing:1px;
+  -webkit-tap-highlight-color:transparent;
+}
+button:hover { background:#333; }
+#btnRestart { color:#4af; border-color:#4af; display:none; }
+#gameWrap {
+  position:relative;
+  width:100%; max-width:400px;
+  flex:1; min-height:0;
+}
+canvas {
+  display:block;
+  width:100%; height:100%;
+  object-fit:contain;
+}
+#overlay {
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  text-align:center; pointer-events:auto; width:90%;
+}
+#overlay h1 {
+  font-size:clamp(22px,8vw,36px); color:#4af;
+  text-shadow:0 0 20px #4af; letter-spacing:6px; margin-bottom:8px;
+}
+#startBtn {
+  margin-top:10px; padding:10px 22px;
+  font-family:'Courier New',monospace;
+  font-size:14px; letter-spacing:2px;
+  background:#1a3a4a; color:#4af;
+  border:2px solid #4af; border-radius:4px;
+  cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+#startBtn:active { background:#4af; color:#000; }
+.blink { font-size:12px; color:#aaa; letter-spacing:2px; animation:blink 1s step-end infinite; }
+@keyframes blink { 50%{opacity:0} }
+.gotext { font-size:clamp(18px,6vw,28px); color:#f44; text-shadow:0 0 20px #f44; letter-spacing:4px; margin-bottom:8px; }
+#controls { display:none; }
+
+/* タッチコントローラー：常に表示、PC(hover可能)では非表示 */
+#touchCtrl {
+  width:100%; max-width:400px;
+  height:100px; flex-shrink:0;
+  position:relative;
+  background:#0a0a0a;
+  border-top:1px solid #222;
+  touch-action:none;
+}
+#stickArea {
+  position:absolute; left:0; top:0;
+  width:50%; height:100%;
+  display:flex; align-items:center; justify-content:center;
+}
+#stickBase {
+  width:70px; height:70px; border-radius:50%;
+  background:rgba(255,255,255,0.07);
+  border:2px solid rgba(255,255,255,0.2);
+  position:relative;
+}
+#stickKnob {
+  width:30px; height:30px; border-radius:50%;
+  background:rgba(255,255,255,0.35);
+  border:2px solid rgba(255,255,255,0.6);
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+}
+#btnArea {
+  position:absolute; right:0; top:0;
+  width:50%; height:100%;
+  display:flex; align-items:center; justify-content:space-evenly;
+}
+.fireBtn {
+  width:54px; height:54px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:10px; font-weight:bold;
+  border:2px solid; cursor:pointer;
+  -webkit-user-select:none; touch-action:none;
+  flex-direction:column; line-height:1.3;
+  -webkit-tap-highlight-color:transparent;
+}
+#btnZap  { background:rgba(0,80,160,0.6); border-color:#4af; color:#4af; }
+#btnBlast{ background:rgba(80,0,80,0.6);  border-color:#f4f; color:#f4f; }
+.fireBtn.active { filter:brightness(1.8); transform:scale(0.93); }
+
+/* PCではタッチコントローラー非表示・キー操作説明表示 */
+@media (hover:hover) and (pointer:fine) {
+  #touchCtrl { display:none; }
+  #controls { display:block; width:100%; max-width:400px; text-align:center; padding:3px; font-size:11px; color:#aaa; flex-shrink:0; }
+}
+</style>
+</head>
+<body>
+<div id="ui">
+  <div>SCORE: <span class="val" id="elScore">0</span></div>
+  <div>ZEVIOUS</div>
+  <div id="btnRow">
+    <span>LIVES: <span class="val" id="elLives">3</span></span>
+    <button id="btnMute">🔊</button>
+    <button id="btnRestart">RESTART</button>
+  </div>
+</div>
+<div id="gameWrap">
+  <canvas id="c" width="400" height="560"></canvas>
+  <div id="overlay">
+    <div id="titleScreen">
+      <h1>ZEVIOUS</h1>
+      <p class="blink">PRESS Z / X  or  TAP</p>
+      <button id="startBtn">&#9654; START</button>
+    </div>
+    <div id="gameoverScreen" style="display:none">
+      <div class="gotext">GAME OVER</div>
+      <p class="blink" id="gameoverHint"></p>
+    </div>
+  </div>
+</div>
+<div id="controls">↑↓←→ 移動 &nbsp; Z: ザッパー（対空） &nbsp; X: ブラスター（対地）</div>
+
+<!-- タッチコントローラー（スマホのみ表示） -->
+<div id="touchCtrl">
+  <div id="stickArea">
+    <div id="stickBase"><div id="stickKnob"></div></div>
+  </div>
+  <div id="btnArea">
+    <div class="fireBtn" id="btnZap">ZAP<br>対空</div>
+    <div class="fireBtn" id="btnBlast">BLAST<br>対地</div>
+  </div>
+</div>
+
+<script>
+// iOSデバッグ用：エラーを画面に表示
+window.onerror = function(msg, src, line, col, err) {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:red;color:white;font-size:11px;padding:4px;z-index:9999;word-break:break-all;';
+  d.textContent = 'ERR L' + line + ': ' + msg;
+  document.body.appendChild(d);
+  return false;
+};
+window.addEventListener('unhandledrejection', function(e) {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:orange;color:black;font-size:11px;padding:4px;z-index:9999;word-break:break-all;';
+  d.textContent = 'PROMISE: ' + e.reason;
+  document.body.appendChild(d);
+});
+</script>
+<script>
+(function(){
+'use strict';
+
+// ── Canvas ───────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const W = 400, H = 560;
+
+// ── DOM refs ──────────────────────────────────────────────────
+const elScore   = document.getElementById('elScore');
+const elLives   = document.getElementById('elLives');
+const overlay   = document.getElementById('overlay');
+const btnRestart= document.getElementById('btnRestart');
+const btnMute   = document.getElementById('btnMute');
+const startBtn  = document.getElementById('startBtn');
+
+// ── State ────────────────────────────────────────────────────
+let gameState = 'title'; // title | playing | gameover
+let score = 0, lives = 3, level = 1, frameCount = 0;
+
+let player, bullets, bombs, enemies, groundEnemies, particles, enemyBullets;
+let invincible = 0, zapCD = 0, blastCD = 0;
+let bgOffset = 0;
+
+// ── Input ─────────────────────────────────────────────────────
+const keys = {};
+window.addEventListener('keydown', e => {
+  if (!keys[e.key]) {
+    if (gameState === 'gameover' && /^[zxZX]$/.test(e.key)) { location.reload(); }
+  }
+  keys[e.key] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','z','Z','x','X'].includes(e.key))
+    e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// ── タッチ操作 ────────────────────────────────────────────────
+const stickBase  = document.getElementById('stickBase');
+const stickKnob  = document.getElementById('stickKnob');
+const btnZap     = document.getElementById('btnZap');
+const btnBlast   = document.getElementById('btnBlast');
+const touchCtrl  = document.getElementById('touchCtrl');
+
+// バーチャルスティック
+let stickActive = false;
+let stickOrigin = {x:0, y:0};
+const STICK_R = 30; // 最大半径
+
+function getStickPos(touch) {
+  const rect = stickBase.getBoundingClientRect();
+  return {
+    x: touch.clientX - rect.left - rect.width/2,
+    y: touch.clientY - rect.top  - rect.height/2,
+  };
+}
+
+stickBase.addEventListener('touchstart', e => {
+  e.preventDefault();
+  stickActive = true;
+  updateStick(getStickPos(e.touches[0]));
+}, {passive:false});
+
+stickBase.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!stickActive) return;
+  updateStick(getStickPos(e.touches[0]));
+}, {passive:false});
+
+stickBase.addEventListener('touchend', e => {
+  e.preventDefault();
+  stickActive = false;
+  stickKnob.style.transform = 'translate(-50%,-50%)';
+  keys['ArrowUp'] = keys['ArrowDown'] = keys['ArrowLeft'] = keys['ArrowRight'] = false;
+}, {passive:false});
+
+function updateStick(p) {
+  const dist = Math.sqrt(p.x*p.x + p.y*p.y);
+  const clamp = Math.min(dist, STICK_R);
+  const nx = dist > 0 ? p.x/dist * clamp : 0;
+  const ny = dist > 0 ? p.y/dist * clamp : 0;
+  stickKnob.style.transform = `translate(calc(-50% + ${nx}px), calc(-50% + ${ny}px))`;
+
+  const threshold = STICK_R * 0.25;
+  keys['ArrowLeft']  = nx < -threshold;
+  keys['ArrowRight'] = nx >  threshold;
+  keys['ArrowUp']    = ny < -threshold;
+  keys['ArrowDown']  = ny >  threshold;
+}
+
+// 射撃ボタン
+function setupFireBtn(el, keyName) {
+  el.addEventListener('touchstart', e => {
+    e.preventDefault();
+    el.classList.add('active');
+    keys[keyName] = true;
+    if (gameState === 'gameover'){ location.reload(); }
+  }, {passive:false});
+  el.addEventListener('touchend', e => {
+    e.preventDefault();
+    el.classList.remove('active');
+    keys[keyName] = false;
+  }, {passive:false});
+  el.addEventListener('touchcancel', e => {
+    el.classList.remove('active');
+    keys[keyName] = false;
+  }, {passive:false});
+}
+
+setupFireBtn(btnZap,   'z');
+setupFireBtn(btnBlast, 'x');
+
+// タッチデバイス検出で操作パネル表示
+window.addEventListener('touchstart', () => {
+  touchCtrl.style.display = 'block';
+  document.getElementById('controls').style.display = 'none';
+}, {once: true});
+
+// ── Buttons ───────────────────────────────────────────────────
+btnRestart.addEventListener('click', () => { location.reload(); });
+btnMute.addEventListener('click', toggleMute);
+
+// ── Background map (ZEVIOUS マップ) ─────────────────────────
+// スクリーンショット分析：
+//   緑（草地）: #4a9a1a 明るい緑
+//   黒（ジャングル）: ドット模様の暗い緑 #1a2a0a
+//   茶（砂地）: #b87820
+//   青（海・川）: #1a44cc
+// 地形は大きなブロック状で、緩やかにカーブしながら変化
+
+const MAP_H = H * 6; // 長めのマップ
+const mapCanvas = document.createElement('canvas');
+mapCanvas.width = W; mapCanvas.height = MAP_H;
+const mctx = mapCanvas.getContext('2d');
+
+// ジャングルドット模様をオフスクリーンに用意
+const jungleCanvas = document.createElement('canvas');
+jungleCanvas.width = 4; jungleCanvas.height = 4;
+const jctx = jungleCanvas.getContext('2d');
+jctx.fillStyle = '#1e3008'; jctx.fillRect(0,0,4,4);
+jctx.fillStyle = '#0e1804'; jctx.fillRect(0,0,2,2);
+jctx.fillStyle = '#2a4010'; jctx.fillRect(2,2,2,2);
+const junglePat = mctx.createPattern(jungleCanvas, 'repeat');
+
+(function buildMap() {
+  // ベース：明るい草地の緑
+  mctx.fillStyle = '#3a8a14';
+  mctx.fillRect(0, 0, W, MAP_H);
+
+  // ── セクション定義（スクリーンショットを参考に）──
+  // 各セクションで地形の配置を変える
+  const sections = [
+    // セクション1: 左に海、右に砂地
+    { y:0,       h:MAP_H/3, leftType:'jungle', leftX:0,   leftW:120, rightType:'sand',  rightX:280, rightW:120 },
+    // セクション2: 左に砂地、右に海
+    { y:MAP_H/3, h:MAP_H/3, leftType:'sand',   leftX:0,   leftW:150, rightType:'ocean', rightX:260, rightW:140 },
+    // セクション3: 真ん中に海
+    { y:MAP_H*2/3, h:MAP_H/3, leftType:'jungle', leftX:0, leftW:100, rightType:'ocean', rightX:220, rightW:180 },
+  ];
+
+  // ジャングルブロック（左側の大きい塊）
+  function drawJungle(x, y, w, h) {
+    mctx.fillStyle = junglePat;
+    // ポリゴン的なでこぼこ形状
+    mctx.beginPath();
+    mctx.moveTo(x, y);
+    const steps = Math.floor(h / 20);
+    let cx = x + w;
+    for (let i = 0; i <= steps; i++) {
+      const py = y + i * (h / steps);
+      const px = cx + (Math.sin(i * 1.3 + x * 0.1) * 20);
+      if (i === 0) mctx.lineTo(px, py);
+      else mctx.lineTo(px, py);
+    }
+    mctx.lineTo(x, y + h);
+    mctx.closePath();
+    mctx.fill();
+  }
+
+  // 砂地ブロック（茶色）
+  function drawSand(x, y, w, h) {
+    mctx.fillStyle = '#b87820';
+    mctx.beginPath();
+    mctx.moveTo(x + w, y);
+    const steps = Math.floor(h / 20);
+    for (let i = 0; i <= steps; i++) {
+      const py = y + i * (h / steps);
+      const px = x + w - (Math.sin(i * 0.9 + y * 0.05) * 18 + 10);
+      mctx.lineTo(px, py);
+    }
+    mctx.lineTo(x + w, y + h);
+    mctx.lineTo(W, y + h);
+    mctx.lineTo(W, y);
+    mctx.closePath();
+    mctx.fill();
+  }
+
+  // 海ブロック（青）
+  function drawOcean(x, y, w, h) {
+    mctx.fillStyle = '#1a44cc';
+    mctx.beginPath();
+    mctx.moveTo(x + w, y);
+    const steps = Math.floor(h / 20);
+    for (let i = 0; i <= steps; i++) {
+      const py = y + i * (h / steps);
+      const px = x + Math.sin(i * 1.1 + y * 0.03) * 15;
+      mctx.lineTo(px, py);
+    }
+    mctx.lineTo(x, y + h);
+    mctx.lineTo(x + w, y + h);
+    mctx.closePath();
+    mctx.fill();
+  }
+
+  // セクション1: 左ジャングル + 右砂地
+  drawJungle(0, 0, 130, MAP_H * 0.38);
+  drawSand(0, MAP_H * 0.05, W, MAP_H * 0.35);  // 砂は右から
+  // 砂を右側だけに（上書き）
+  mctx.fillStyle = '#3a8a14';
+  mctx.fillRect(0, MAP_H * 0.05, 230, MAP_H * 0.35); // 左側を草で上書き
+
+  // セクション2: 砂が広がる
+  mctx.fillStyle = '#b87820';
+  mctx.beginPath();
+  mctx.moveTo(0, MAP_H * 0.38);
+  mctx.lineTo(0, MAP_H * 0.72);
+  mctx.lineTo(180, MAP_H * 0.72);
+  mctx.bezierCurveTo(200, MAP_H*0.65, 160, MAP_H*0.5, 140, MAP_H*0.38);
+  mctx.closePath();
+  mctx.fill();
+
+  // 砂のもう一塊（右下）
+  mctx.fillStyle = '#b87820';
+  mctx.beginPath();
+  mctx.moveTo(W, MAP_H * 0.45);
+  mctx.lineTo(W, MAP_H * 0.75);
+  mctx.lineTo(260, MAP_H * 0.75);
+  mctx.bezierCurveTo(240, MAP_H*0.65, 270, MAP_H*0.52, W-30, MAP_H*0.45);
+  mctx.closePath();
+  mctx.fill();
+
+  // セクション3: 海が大きく広がる
+  mctx.fillStyle = '#1a44cc';
+  mctx.beginPath();
+  mctx.moveTo(W, MAP_H * 0.7);
+  mctx.lineTo(W, MAP_H);
+  mctx.lineTo(180, MAP_H);
+  mctx.bezierCurveTo(160, MAP_H*0.9, 200, MAP_H*0.8, 220, MAP_H*0.7);
+  mctx.closePath();
+  mctx.fill();
+
+  // 左のジャングル（下半分）
+  drawJungle(0, MAP_H * 0.55, 110, MAP_H * 0.45);
+
+  // ジャングルの大きな塊（中盤）
+  drawJungle(0, MAP_H * 0.25, 160, MAP_H * 0.2);
+
+  // ── 道路（砂地の上に細い線）──
+  // 縦の道路
+  mctx.strokeStyle = '#8a6010';
+  mctx.lineWidth = 8;
+  mctx.beginPath();
+  mctx.moveTo(220, 0);
+  mctx.bezierCurveTo(200, MAP_H*0.15, 240, MAP_H*0.3, 210, MAP_H*0.5);
+  mctx.stroke();
+
+  mctx.strokeStyle = '#9a7020';
+  mctx.lineWidth = 14;
+  mctx.beginPath();
+  mctx.moveTo(300, MAP_H * 0.1);
+  mctx.bezierCurveTo(320, MAP_H*0.25, 290, MAP_H*0.4, 310, MAP_H*0.55);
+  mctx.stroke();
+
+})();
+
+// ── Game init ─────────────────────────────────────────────────
+function resetAndStart() {
+  score = 0; lives = 3; level = 1; frameCount = 0;
+  player       = { x:W/2, y:H-80, spd:3.5 };
+  bullets      = [];
+  bombs        = [];
+  enemies      = [];
+  groundEnemies= [];
+  particles    = [];
+  enemyBullets = [];
+  invincible   = 120;
+  zapCD = 0; blastCD = 0;
+  // キー状態をクリア（押しっぱなし誤作動防止）
+  for (const k in keys) keys[k] = false;
+
+  elScore.textContent = '0';
+  elLives.textContent = '3';
+  overlay.style.display = 'none';
+  document.getElementById('gameoverScreen').style.display = 'none';
+  document.getElementById('titleScreen').style.display = 'block';
+  btnRestart.style.display = 'inline-block';
+
+  gameState = 'playing';
+  startBGM();
+}
+
+// ── Audio ─────────────────────────────────────────────────────
+let ac = null;
+let muted = false;
+let bgmTimer = null;
+let bgmOscs  = [];
+
+// ── ファンファーレ（タイトル画面BGM）MIDIデータ ──────────────
+// BGM MIDIデータ BPM=140
+const FANFARE_MELODY = [
+  [0.0000,0.6615,440.00],[0.0000,0.6615,698.46],
+  [0.8333,0.1667,440.00],[0.8333,0.1667,523.25],
+  [1.0000,0.1667,440.00],[1.0000,0.1667,698.46],
+  [1.1667,0.1667,523.25],[1.1667,0.1667,880.00],
+  [1.3333,0.1667,698.46],[1.3333,0.1667,1046.50],
+  [1.5000,0.1667,523.25],[1.5000,0.1667,880.00],
+  [1.8333,0.1667,440.00],[1.8333,0.1667,698.46],
+  [2.0000,0.1667,466.16],[2.0000,0.1667,783.99],
+  [2.3333,0.1667,466.16],[2.3333,0.1667,783.99],
+  [2.5000,0.1667,466.16],[2.5000,0.1667,783.99],
+  [2.8333,0.5000,466.16],[2.8333,0.5000,587.33],
+  [3.3333,0.1667,466.16],[3.3333,0.1667,783.99],
+  [3.5000,0.1667,466.16],[3.5000,0.1667,698.46],
+  [3.8333,0.1667,466.16],[3.8333,0.1667,659.26],
+  [4.0000,0.6615,440.00],[4.0000,0.6615,698.46],
+  [4.8333,0.1667,440.00],[4.8333,0.1667,523.25],
+  [5.0000,0.1667,440.00],[5.0000,0.1667,698.46],
+  [5.1667,0.1667,440.00],[5.1667,0.1667,880.00],
+  [5.3333,0.1667,440.00],[5.3333,0.1667,1046.50],
+  [5.5000,0.1667,440.00],[5.5000,0.1667,880.00],
+  [5.8333,0.1667,440.00],[5.8333,0.1667,698.46],
+  [6.0000,0.1667,466.16],[6.0000,0.1667,739.99],
+  [6.3333,0.1667,466.16],[6.3333,0.1667,739.99],
+  [6.5000,0.1667,466.16],[6.5000,0.1667,739.99],
+  [6.8333,1.1667,440.00],[6.8333,1.1667,698.46],
+];
+const FANFARE_BASS = [
+  [0.0000,0.1667,87.31],[0.1667,0.1667,87.31],[0.3333,0.1667,87.31],[0.5000,0.1667,87.31],
+  [1.0000,0.1667,87.31],[1.1667,0.1667,87.31],[1.3333,0.1667,87.31],[1.5000,0.1667,87.31],
+  [2.0000,0.1667,87.31],[2.1667,0.1667,87.31],[2.3333,0.1667,87.31],[2.5000,0.1667,87.31],
+  [3.0000,0.1667,87.31],[3.1667,0.1667,87.31],[3.3333,0.1667,87.31],[3.5000,0.1667,87.31],
+  [4.0000,0.1667,87.31],[4.1667,0.1667,87.31],[4.3333,0.1667,87.31],[4.5000,0.1667,87.31],
+  [5.0000,0.1667,87.31],[5.1667,0.1667,87.31],[5.3333,0.1667,87.31],[5.5000,0.1667,87.31],
+  [6.0000,0.1667,87.31],[6.1667,0.1667,87.31],[6.3333,0.1667,87.31],[6.5000,0.1667,87.31],
+  [6.8333,0.1667,87.31],
+];
+const FANFARE_LEN = 8.0;
+
+function startFanfare() {
+  if (muted) return;
+  stopBGM();
+  const a = getAC(), now = a.currentTime + 0.02;
+  const master = a.createGain();
+  master.gain.value = 0.15;
+  master.connect(a.destination);
+  const sched = (t,d,hz,vol) => {
+    const o=a.createOscillator(), g=a.createGain();
+    o.type='square'; o.frequency.value=hz;
+    const t0=now+t, t1=t0+d*0.88;
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(vol,t0+0.005);
+    g.gain.setValueAtTime(vol*0.85,t1-0.01);
+    g.gain.linearRampToValueAtTime(0.0001,t1);
+    o.connect(g); g.connect(master);
+    o.start(t0); o.stop(t1+0.01);
+    bgmOscs.push(o);
+  };
+  for (const [t,d,hz] of FANFARE_MELODY) sched(t,d,hz,1.0);
+  for (const [t,d,hz] of FANFARE_BASS)   sched(t,d,hz,0.6);
+  bgmTimer = setTimeout(() => { bgmOscs=[]; if(gameState==='title' && !muted) startFanfare(); }, FANFARE_LEN*1000-20);
+}
+
+function getAC() {
+  if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+  if (ac.state === 'suspended') ac.resume();
+  return ac;
+}
+
+// iOSの音声ロック解除（必ずユーザー操作イベント内で呼ぶ）
+function unlockAudio() {
+  getAC();
+}
+function toggleMute() {
+  muted = !muted;
+  btnMute.textContent = muted ? '🔇' : '🔊';
+  if (muted) {
+    stopBGM();
+  } else {
+    if (gameState === 'title')   startFanfare();
+    if (gameState === 'playing') startBGM();
+  }
+}
+// ── SFX ───────────────────────────────────────────────────────
+// ZEVIOUS風効果音。BGMより確実に聞こえるよう音量高め設定。
+
+// ザッパー（対空ショット）: キュイーンと上昇する電子音
+function sfxZap() {
+  if (muted) return;
+  const a = getAC(), now = a.currentTime;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = 'square';
+  o.frequency.setValueAtTime(1200, now);
+  o.frequency.exponentialRampToValueAtTime(400, now + 0.08);
+  g.gain.setValueAtTime(0.35, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+  o.connect(g); g.connect(a.destination);
+  o.start(now); o.stop(now + 0.09);
+}
+
+// ブラスター（対地爆弾投下）: ボゥンと落下する低音
+function sfxBlast() {
+  if (muted) return;
+  const a = getAC(), now = a.currentTime;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(300, now);
+  o.frequency.exponentialRampToValueAtTime(60, now + 0.25);
+  g.gain.setValueAtTime(0.4, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+  o.connect(g); g.connect(a.destination);
+  o.start(now); o.stop(now + 0.26);
+}
+
+// 敵撃破（小）: ピキャッという8bit爆発音
+function sfxBoom(big) {
+  if (muted) return;
+  const a = getAC(), now = a.currentTime;
+  const dur = big ? 0.7 : 0.3;
+  const vol = big ? 0.6 : 0.4;
+
+  // ノイズ爆発
+  const bufLen = Math.floor(a.sampleRate * dur);
+  const buf = a.createBuffer(1, bufLen, a.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1);
+  const noise = a.createBufferSource();
+  noise.buffer = buf;
+  const filt = a.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.frequency.value = big ? 300 : 800;
+  filt.Q.value = big ? 0.5 : 1.5;
+  const gn = a.createGain();
+  gn.gain.setValueAtTime(vol, now);
+  gn.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  noise.connect(filt); filt.connect(gn); gn.connect(a.destination);
+  noise.start(now); noise.stop(now + dur);
+
+  // 電子音を重ねる（シューティングらしいピーン音）
+  if (big) {
+    const o = a.createOscillator(), go = a.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(880, now);
+    o.frequency.exponentialRampToValueAtTime(110, now + 0.5);
+    go.gain.setValueAtTime(0.3, now);
+    go.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    o.connect(go); go.connect(a.destination);
+    o.start(now); o.stop(now + 0.5);
+  } else {
+    const o = a.createOscillator(), go = a.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(600, now);
+    o.frequency.exponentialRampToValueAtTime(150, now + 0.2);
+    go.gain.setValueAtTime(0.25, now);
+    go.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    o.connect(go); go.connect(a.destination);
+    o.start(now); o.stop(now + 0.2);
+  }
+}
+
+// ブラスター着弾爆発（地上）
+function sfxGroundBoom() {
+  if (muted) return;
+  const a = getAC(), now = a.currentTime;
+  const bufLen = Math.floor(a.sampleRate * 0.4);
+  const buf = a.createBuffer(1, bufLen, a.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+  const noise = a.createBufferSource();
+  noise.buffer = buf;
+  const filt = a.createBiquadFilter();
+  filt.type = 'lowpass'; filt.frequency.value = 400;
+  const gn = a.createGain();
+  gn.gain.setValueAtTime(0.5, now);
+  gn.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+  noise.connect(filt); filt.connect(gn); gn.connect(a.destination);
+  noise.start(now); noise.stop(now + 0.4);
+}
+
+// 自機被弾: ドゥワーンと悲鳴のような下降音
+function sfxHit() {
+  if (muted) return;
+  const a = getAC(), now = a.currentTime;
+  // 主音（下降）
+  const o1 = a.createOscillator(), g1 = a.createGain();
+  o1.type = 'sawtooth';
+  o1.frequency.setValueAtTime(660, now);
+  o1.frequency.exponentialRampToValueAtTime(80, now + 0.5);
+  g1.gain.setValueAtTime(0.5, now);
+  g1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+  o1.connect(g1); g1.connect(a.destination);
+  o1.start(now); o1.stop(now + 0.5);
+  // ノイズ重畳
+  const bufLen = Math.floor(a.sampleRate * 0.3);
+  const buf = a.createBuffer(1, bufLen, a.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+  const noise = a.createBufferSource();
+  noise.buffer = buf;
+  const filt = a.createBiquadFilter();
+  filt.type = 'highpass'; filt.frequency.value = 1000;
+  const gn = a.createGain();
+  gn.gain.setValueAtTime(0.3, now);
+  gn.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+  noise.connect(filt); filt.connect(gn); gn.connect(a.destination);
+  noise.start(now); noise.stop(now + 0.3);
+}
+
+// ゲームオーバー: 重々しく下降する和音
+function sfxGameover() {
+  if (muted) return;
+  try {
+    const a = getAC(), now = a.currentTime + 0.05; // 必ず未来の時刻
+    const notes = [
+      [523, 0.05], [440, 0.35], [370, 0.65], [294, 0.95], [220, 1.25]
+    ];
+    notes.forEach(([freq, delay]) => {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'square'; o.frequency.value = freq;
+      const t = now + delay;
+      g.gain.setValueAtTime(0.3, t);
+      g.gain.setValueAtTime(0.3, t + 0.25);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      o.connect(g); g.connect(a.destination);
+      o.start(t); o.stop(t + 0.4);
+    });
+  } catch(e) {}
+}
+
+// スコア加算時のチャイム
+function sfxScore() {
+  if (muted) return;
+  const a = getAC(), now = a.currentTime;
+  [880, 1108].forEach((freq, i) => {
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'triangle'; o.frequency.value = freq;
+    const t = now + i * 0.06;
+    g.gain.setValueAtTime(0.2, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    o.connect(g); g.connect(a.destination);
+    o.start(t); o.stop(t + 0.13);
+  });
+}
+
+// ── ZEVIOUS BGM ──────────────────────────
+// ゲームBGM MIDIデータ
+// BPM=130、32ノート、4秒ループ
+// クロマティッククリシェ: B5→A#5→A5→G#5（半音下降）
+// C6が軸、C5が拍頭、E6がトップ音
+
+const MIDI_BGM = [
+  [0.0000, 0.1250,  523.25],  // C5
+  [0.1250, 0.1250, 1046.50],  // C6
+  [0.2500, 0.1250,  987.77],  // B5  ← クリシェ1
+  [0.3750, 0.1250, 1046.50],  // C6
+  [0.5000, 0.1250, 1318.51],  // E6
+  [0.6250, 0.1250, 1046.50],  // C6
+  [0.7500, 0.1250,  987.77],  // B5
+  [0.8750, 0.1250, 1046.50],  // C6
+  [1.0000, 0.1250,  523.25],  // C5
+  [1.1250, 0.1250, 1046.50],  // C6
+  [1.2500, 0.1250,  932.33],  // A#5 ← クリシェ2
+  [1.3750, 0.1250, 1046.50],  // C6
+  [1.5000, 0.1250, 1318.51],  // E6
+  [1.6250, 0.1250, 1046.50],  // C6
+  [1.7500, 0.1250,  932.33],  // A#5
+  [1.8750, 0.1250, 1046.50],  // C6
+  [2.0000, 0.1250,  523.25],  // C5
+  [2.1250, 0.1250, 1046.50],  // C6
+  [2.2500, 0.1250,  880.00],  // A5  ← クリシェ3
+  [2.3750, 0.1250, 1046.50],  // C6
+  [2.5000, 0.1250, 1318.51],  // E6
+  [2.6250, 0.1250, 1046.50],  // C6
+  [2.7500, 0.1250,  880.00],  // A5
+  [2.8750, 0.1250, 1046.50],  // C6
+  [3.0000, 0.1250,  523.25],  // C5
+  [3.1250, 0.1250, 1046.50],  // C6
+  [3.2500, 0.1250,  830.61],  // G#5 ← クリシェ4
+  [3.3750, 0.1250, 1046.50],  // C6
+  [3.5000, 0.1250, 1318.51],  // E6
+  [3.6250, 0.1250, 1046.50],  // C6
+  [3.7500, 0.1250,  830.61],  // G#5
+  [3.8750, 0.1250, 1046.50],  // C6
+];
+
+const MIDI_BGM_LEN = 4.0; // 4秒ループ
+
+function startBGM() { if (muted) return; stopBGM(); _bgmLoop(); }
+function stopBGM() {
+  if (bgmTimer) { clearTimeout(bgmTimer); bgmTimer = null; }
+  const oscs = bgmOscs.slice();
+  bgmOscs = [];
+  oscs.forEach(o => {
+    try { o.stop(ac ? ac.currentTime + 0.05 : 0); } catch(e) {}
+  });
+}
+
+function _bgmLoop() {
+  if (muted || gameState !== 'playing') return;
+  const a   = getAC();
+  const now = a.currentTime + 0.02;
+
+  const master = a.createGain();
+  master.gain.value = 0.15;
+  master.connect(a.destination);
+
+  for (const [t, d, hz] of MIDI_BGM) {
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'square';
+    o.frequency.value = hz;
+    const t0 = now + t, t1 = t0 + d * 0.85;
+    g.gain.setValueAtTime(0.0001,    t0);
+    g.gain.linearRampToValueAtTime(1.0, t0 + 0.004);
+    g.gain.setValueAtTime(0.85, t1 - 0.01);
+    g.gain.linearRampToValueAtTime(0.0001,   t1);
+    o.connect(g); g.connect(master);
+    o.start(t0); o.stop(t1 + 0.01);
+    bgmOscs.push(o);
+  }
+
+  bgmTimer = setTimeout(() => {
+    bgmOscs = [];
+    _bgmLoop();
+  }, MIDI_BGM_LEN * 1000 - 20);
+}
+
+
+// ── Helpers ───────────────────────────────────────────────────
+function addParticles(x,y,color,count=12) {
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2, s=1+Math.random()*3;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+      life:30+Math.random()*20, maxLife:50, size:2+Math.random()*4, color});
+  }
+}
+
+// ── Spawn ─────────────────────────────────────────────────────
+function spawnEnemies() {
+  if(frameCount%120===0){
+    const bx=50+Math.random()*300, tp=Math.random()<0.7?'toroid':'giddo';
+    for(let i=0;i<4;i++)
+      enemies.push({type:tp, x:bx+(i-1.5)*28, y:-20-i*15,
+        hp:tp==='toroid'?1:2, maxHp:tp==='toroid'?1:2,
+        spd:1.5+level*0.2, wave:Math.random()*Math.PI*2,
+        shootCD:Math.floor(Math.random()*100)+20});
+  }
+  if(frameCount%800===400)
+    enemies.push({type:'bragza',x:W/2,y:-40,hp:8+level*2,maxHp:8+level*2,spd:0.8,wave:0,shootCD:0});
+  if(frameCount%150===0){
+    const tp=Math.random()<0.7?'solg':'andor';
+    groundEnemies.push({type:tp,x:30+Math.random()*340,y:H+20,
+      hp:tp==='solg'?2:8, maxHp:tp==='solg'?2:8});
+  }
+}
+
+// ── Player hit ────────────────────────────────────────────────
+function playerHit() {
+  if(invincible>0) return;
+  sfxHit();
+  addParticles(player.x, player.y, '#4af', 16);
+  lives--;
+  elLives.textContent = lives;
+  if(lives<=0){
+    gameState='gameover';
+    stopBGM(); sfxGameover();
+    const isMobile = window.ontouchstart !== undefined;
+    document.getElementById('titleScreen').style.display = 'none';
+    document.getElementById('gameoverHint').textContent = isMobile ? 'TAP RESTART' : 'Z / X KEY OR RESTART';
+    document.getElementById('gameoverScreen').style.display = 'block';
+    overlay.style.display='block';
+    invincible=9999;
+  } else {
+    invincible=180;
+    player.x=W/2; player.y=H-80;
+    bullets=[]; enemyBullets=[];
+  }
+}
+
+// ── Update ────────────────────────────────────────────────────
+function update() {
+  frameCount++;
+  if(invincible>0) invincible--;
+
+  // 移動
+  if((keys['ArrowLeft'] ||keys['a'])&&player.x>15)    player.x-=player.spd;
+  if((keys['ArrowRight']||keys['d'])&&player.x<W-15)  player.x+=player.spd;
+  if((keys['ArrowUp']   ||keys['w'])&&player.y>30)    player.y-=player.spd;
+  if((keys['ArrowDown'] ||keys['s'])&&player.y<H-20)  player.y+=player.spd;
+
+  // 射撃
+  if((keys['z']||keys['Z'])&&zapCD<=0){
+    bullets.push({x:player.x,y:player.y-16}); zapCD=10; sfxZap();
+  }
+  if((keys['x']||keys['X'])&&blastCD<=0){
+    bombs.push({x:player.x,y:player.y+10,exploding:false,radius:0}); blastCD=20; sfxBlast();
+  }
+  if(zapCD>0)   zapCD--;
+  if(blastCD>0) blastCD--;
+
+  // 弾
+  for(let i=bullets.length-1;i>=0;i--){
+    bullets[i].y-=9;
+    if(bullets[i].y<-20) bullets.splice(i,1);
+  }
+  // 爆弾
+  for(let i=bombs.length-1;i>=0;i--){
+    const b=bombs[i];
+    if(!b.exploding){ b.y+=3; if(b.y>H){b.exploding=true;b.radius=0;} }
+    else{ b.radius+=2; if(b.radius>30) bombs.splice(i,1); }
+  }
+
+  spawnEnemies();
+
+  // 空中敵
+  for(let i=enemies.length-1;i>=0;i--){
+    const e=enemies[i];
+    e.wave+=0.04; e.y+=e.spd;
+    e.x+=Math.sin(e.wave)*(e.type==='bragza'?1.5:2);
+    e.x=Math.max(20,Math.min(W-20,e.x));
+    e.shootCD--;
+    if(e.shootCD<=0){
+      const dx=player.x-e.x, dy=player.y-e.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+      const s=e.type==='bragza'?3:2;
+      enemyBullets.push({x:e.x,y:e.y,vx:dx/d*s,vy:dy/d*s});
+      e.shootCD=e.type==='bragza'?40:80+Math.floor(Math.random()*60);
+    }
+    if(e.y>H+40){ enemies.splice(i,1); continue; }
+    // 自弾との衝突
+    let killed=false;
+    for(let j=bullets.length-1;j>=0;j--){
+      const b=bullets[j];
+      if(Math.abs(b.x-e.x)<14&&Math.abs(b.y-e.y)<14){
+        bullets.splice(j,1); e.hp--;
+        if(e.hp<=0){
+          const big=e.type==='bragza';
+          addParticles(e.x,e.y,big?'#ff0':'#f80',big?20:12); sfxBoom(big);
+          score+=big?500:(e.type==='toroid'?50:100);
+          sfxScore();
+          enemies.splice(i,1); killed=true;
+        }
+        break;
+      }
+    }
+    if(killed) continue;
+    // プレイヤーとの衝突
+    if(Math.abs(e.x-player.x)<16&&Math.abs(e.y-player.y)<16) playerHit();
+  }
+
+  // 地上敵
+  for(let i=groundEnemies.length-1;i>=0;i--){
+    const g=groundEnemies[i];
+    g.y-=1.5;
+    if(g.y<-30){ groundEnemies.splice(i,1); continue; }
+    for(const b of bombs){
+      if(b.exploding&&Math.hypot(b.x-g.x,b.y-g.y)<b.radius+14){
+        g.hp-=0.1;
+        if(g.hp<=0){
+          addParticles(g.x,g.y,'#f80',15); sfxGroundBoom();
+          score+=g.type==='andor'?300:80;
+          sfxScore();
+          groundEnemies.splice(i,1);
+        }
+        break;
+      }
+    }
+  }
+
+  // 敵弾
+  for(let i=enemyBullets.length-1;i>=0;i--){
+    const eb=enemyBullets[i];
+    eb.x+=eb.vx; eb.y+=eb.vy;
+    if(eb.x<0||eb.x>W||eb.y<0||eb.y>H){ enemyBullets.splice(i,1); continue; }
+    if(Math.abs(eb.x-player.x)<8&&Math.abs(eb.y-player.y)<8){ enemyBullets.splice(i,1); playerHit(); }
+  }
+
+  // パーティクル
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.vx*=0.95; p.vy*=0.95; p.life--;
+    if(p.life<=0) particles.splice(i,1);
+  }
+
+  if(score>level*2000) level++;
+  elScore.textContent=score;
+}
+
+// ── Draw ──────────────────────────────────────────────────────
+function drawBG() {
+  bgOffset = (bgOffset + 1.2) % MAP_H;
+  // マップを2回描画してシームレスループ
+  const y0 = bgOffset - MAP_H;
+  ctx.drawImage(mapCanvas, 0, y0);
+  ctx.drawImage(mapCanvas, 0, y0 + MAP_H);
+}
+
+function drawPlayer() {
+  if(invincible>0&&Math.floor(invincible/4)%2===0) return;
+  const x=player.x, y=player.y;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+
+  // ソルバルウ：白と青のピクセルアート風
+  // 機体シルエット（白）
+  ctx.fillStyle='#ffffff';
+  // 中央ボディ
+  ctx.fillRect(x-4, y-12, 8, 20);
+  // 翼
+  ctx.fillRect(x-14, y-2, 28, 6);
+  ctx.fillRect(x-10, y+2,  20, 4);
+  ctx.fillRect(x-6,  y+6,  12, 4);
+
+  // 青いライン（特徴的なストライプ）
+  ctx.fillStyle='#4466ff';
+  ctx.fillRect(x-2, y-10, 4, 16);
+  ctx.fillRect(x-12, y, 24, 2);
+
+  // コックピット（暗い）
+  ctx.fillStyle='#334488';
+  ctx.fillRect(x-2, y-8, 4, 6);
+
+  // エンジン炎（点滅）
+  if(frameCount%6<3){
+    ctx.fillStyle='#88aaff';
+    ctx.fillRect(x-2, y+9, 4, 4);
+  }
+
+  ctx.restore();
+}
+
+function drawEnemies() {
+  for(const e of enemies){
+    ctx.save(); ctx.translate(e.x,e.y);
+    if(e.type==='toroid'){
+      // トーロイド：グレーのリング（スクリーンショット通り）
+      ctx.strokeStyle='#bbbbbb';
+      ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='#888888';
+      ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#cccccc';
+      ctx.beginPath(); ctx.arc(0,0,2,0,Math.PI*2); ctx.fill();
+    } else if(e.type==='giddo'){
+      // ギドスパリオ：小さい青白い敵（スクリーンショットの小さいの）
+      ctx.fillStyle='#8888ff';
+      ctx.fillRect(-5,-5,10,10);
+      ctx.fillStyle='#ffffff';
+      ctx.fillRect(-3,-3,6,6);
+      ctx.fillStyle='#0000cc';
+      ctx.fillRect(-2,-2,4,4);
+    } else {
+      // ブラグザ（大型要塞）：スクリーンショットの大きな円形要塞
+      // 外周の灰色リング
+      ctx.strokeStyle='#666666';
+      ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(0,0,22,0,Math.PI*2); ctx.stroke();
+
+      ctx.fillStyle='#555555';
+      ctx.beginPath(); ctx.arc(0,0,20,0,Math.PI*2); ctx.fill();
+
+      // 内部の複雑な構造
+      ctx.fillStyle='#333333';
+      ctx.beginPath(); ctx.arc(0,0,13,0,Math.PI*2); ctx.fill();
+
+      // 放射状のアーム
+      ctx.strokeStyle='#888888'; ctx.lineWidth=3;
+      for(let i=0;i<8;i++){
+        const a=(i/8)*Math.PI*2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a)*8, Math.sin(a)*8);
+        ctx.lineTo(Math.cos(a)*18, Math.sin(a)*18);
+        ctx.stroke();
+      }
+
+      // 中央コア
+      ctx.fillStyle='#222222';
+      ctx.beginPath(); ctx.arc(0,0,7,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#884400';
+      ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill();
+
+      // HP
+      ctx.fillStyle='#000'; ctx.fillRect(-18,-28,36,4);
+      ctx.fillStyle='#ff6600'; ctx.fillRect(-18,-28,36*(e.hp/e.maxHp),4);
+    }
+    ctx.restore();
+  }
+}
+
+function drawGroundEnemies() {
+  for(const g of groundEnemies){
+    ctx.save(); ctx.translate(g.x,g.y);
+    if(g.type==='solg'){
+      // ゾシーダ風：小さい暗い台形（スクリーンショットの黒い台形）
+      ctx.fillStyle='#222222';
+      ctx.beginPath();
+      ctx.moveTo(-10,-4); ctx.lineTo(10,-4);
+      ctx.lineTo(14,4);  ctx.lineTo(-14,4);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#444444';
+      ctx.fillRect(-6,-2,12,4);
+    } else {
+      // アンドアジェネシス風：ピラミッド形（スクリーンショット参照）
+      // 影（左下の黒）
+      ctx.fillStyle='#000000';
+      ctx.beginPath();
+      ctx.moveTo(-14, 14); ctx.lineTo(14,14); ctx.lineTo(0,-14);
+      ctx.closePath(); ctx.fill();
+      // 本体（チェッカー模様の四角形）
+      ctx.fillStyle='#888888';
+      ctx.fillRect(-14,-6,28,20);
+      // チェッカー
+      ctx.fillStyle='#aaaaaa';
+      for(let row=0;row<3;row++){
+        for(let col=0;col<4;col++){
+          if((row+col)%2===0){
+            ctx.fillRect(-14+col*7, -6+row*7, 7, 7);
+          }
+        }
+      }
+      // 上部の三角
+      ctx.fillStyle='#777777';
+      ctx.beginPath();
+      ctx.moveTo(-14,-6); ctx.lineTo(14,-6); ctx.lineTo(0,-16);
+      ctx.closePath(); ctx.fill();
+
+      ctx.fillStyle='#000'; ctx.fillRect(-14,-22,28,3);
+      ctx.fillStyle='#f80'; ctx.fillRect(-14,-22,28*(g.hp/g.maxHp),3);
+    }
+    ctx.restore();
+  }
+}
+
+function drawBombs() {
+  for(const b of bombs){
+    if(b.exploding){
+      ctx.strokeStyle=`rgba(255,255,255,${1-b.radius/30})`; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(b.x,b.y,b.radius,0,Math.PI*2); ctx.stroke();
+    } else {
+      // ブラスター弾：白い丸（オリジナル通り）
+      ctx.fillStyle='#ffffff';
+      ctx.beginPath(); ctx.arc(b.x,b.y,4,0,Math.PI*2); ctx.fill();
+    }
+  }
+}
+
+function drawBullets() {
+  // ザッパー：白い細い縦線（オリジナルそのまま）
+  ctx.fillStyle='#ffffff';
+  for(const b of bullets){
+    ctx.fillRect(b.x-1, b.y-10, 2, 12);
+  }
+}
+
+function drawEnemyBullets() {
+  // 敵弾：白い小さい丸（スクリーンショット参照）
+  for(const eb of enemyBullets){
+    ctx.fillStyle='#ffffff';
+    ctx.beginPath(); ctx.arc(eb.x,eb.y,2,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#6666ff'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(eb.x,eb.y,4,0,Math.PI*2); ctx.stroke();
+    ctx.lineWidth=1;
+  }
+}
+
+function drawParticles() {
+  for(const p of particles){
+    ctx.globalAlpha=p.life/p.maxLife;
+    ctx.fillStyle=p.color;
+    ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawHUD() {
+  ctx.font='10px Courier New';
+  ctx.fillStyle='#555';   ctx.fillText('ZAP',5,H-24);
+  ctx.fillStyle=zapCD<=0?'#ff4':'#443'; ctx.fillRect(5,H-20,40,4);
+  ctx.fillStyle='#555';   ctx.fillText('BLAST',W-50,H-24);
+  ctx.fillStyle=blastCD<=0?'#f0f':'#434'; ctx.fillRect(W-45,H-20,40,4);
+}
+
+// ── Main loop ─────────────────────────────────────────────────
+function loop() {
+  ctx.clearRect(0,0,W,H);
+  drawBG();
+
+  if(gameState==='title'){
+    ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(0,0,W,H);
+  } else if(gameState==='playing'){
+    update();
+    drawGroundEnemies();
+    drawBombs();
+    drawParticles();
+    drawEnemies();
+    drawEnemyBullets();
+    drawBullets();
+    drawPlayer();
+    drawHUD();
+  } else if(gameState==='gameover'){
+    ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,W,H);
+  }
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+
+// ── iOS音声解除 + ゲーム開始 ────────────────────────────────
+// iOSの鉄則：AudioContextの生成とresume()は
+// ユーザー操作イベントハンドラの「同期処理」の中で行う
+
+let audioUnlocked = false;
+
+function doStart() {
+  // 1) AudioContext を同期的に生成（まだなければ）
+  if (!ac) {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  // 2) resume() を呼ぶ（iOSはこれが必須）
+  const startGame = () => {
+    audioUnlocked = true;
+
+    // 3) 無音バッファを再生してiOSのロックを完全解除
+    try {
+      const buf = ac.createBuffer(1, 1, ac.sampleRate);
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      src.connect(ac.destination);
+      src.start(0);
+    } catch(e) {}
+
+    // 4) ゲーム開始 → BGM
+    resetAndStart();
+  };
+
+  if (ac.state === 'suspended') {
+    ac.resume().then(startGame).catch(startGame);
+  } else {
+    startGame();
+  }
+}
+
+// STARTボタン
+['click','touchend'].forEach(ev => {
+  startBtn.addEventListener(ev, e => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (gameState === 'title') doStart();
+  }, {passive: false});
+});
+
+// キーボード（PC）
+window.addEventListener('keydown', e => {
+  if (gameState === 'title' && /^[zxZX]$/.test(e.key)) {
+    doStart();
+  }
+  if (gameState === 'gameover' && /^[zxZX]$/.test(e.key)) {
+    location.reload();
+  }
+}, {capture: true});
+
+})(); // IIFE 終了
+} catch(e) { console.warn('ZEVIOUS:', e.message); }
+</script>
+</body>
+</html>
